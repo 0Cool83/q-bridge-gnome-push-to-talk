@@ -1,0 +1,57 @@
+TITLE: [Ubuntu / GNOME / Wayland] Push-to-talk outside Discord + GeForce NOW in Brave — Nothing to Say and Q Bridge (tested workaround)
+
+INTRODUCTION
+This post describes two related issues we solved on one Ubuntu 26.04 GNOME/Wayland setup. We tested the result in World of Tanks streamed through GeForce NOW in the Brave browser, while communicating on Discord. This is a community workaround, not an official NVIDIA, Discord, or GNOME fix; results may differ on other machines.
+
+PART I — Push-to-talk when Discord is not focused: Nothing to Say
+
+The problem: in this particular setup, Discord's built-in push-to-talk did not work reliably after switching focus to another application. Similar convenience issues may arise with voice apps such as TeamSpeak. This is not a claim that Discord or TeamSpeak are universally broken; it is an account of one configuration and its observed behavior.
+
+Our first solution was the existing GNOME Shell extension “Nothing to Say”, by Wouter Bolsterlee (wbolster):
+https://extensions.gnome.org/extension/1113/nothing-to-say/
+https://github.com/wbolster/nothing-to-say
+
+The extension controls the system microphone mute state independently of the foreground application. We configured its push-to-talk mode with the Q shortcut: hold Q to unmute, release Q to mute. Its panel icon can also control mute. Discord's own mute button remains independent: muting inside Discord still prevents transmission there.
+
+Important caveat: a single letter (Q) registered as a global GNOME shortcut is consumed by the shell in this setup, so ordinary typing of Q in text fields is blocked in that mode. This is a trade-off of the shortcut configuration, not a Q Bridge bug. Choose a different binding if typing Q is more important, or switch modes deliberately.
+
+PART II — GeForce NOW captures the keyboard: Q Bridge
+
+The second problem appeared when launching World of Tanks via GeForce NOW in fullscreen Brave: the streamed game captured keyboard and mouse input, and the regular GNOME global Q shortcut was no longer handled by Nothing to Say as it was on the desktop.
+
+We built a small experimental helper called “Q Bridge”. It does not replace Nothing to Say or implement separate audio control. Instead, it reads physical Q key-down/key-up events from Linux evdev (tested with evtest, KEY_Q code 16) and forwards Press/Release messages over session D-Bus to a small receiver patched into the local Nothing to Say extension. The receiver invokes the extension's existing push-to-talk handling.
+
+Signal flow:
+  Physical Q --> game/browser (ordinary input)
+             \-> Q Bridge (evdev) -> D-Bus -> Nothing to Say receiver -> system mic mute -> Discord/TeamSpeak
+
+Our tested v0.5 Auto Switch behavior:
+1. Before gaming: Nothing to Say uses the original global Q shortcut.
+2. Running “run.sh” temporarily clears that global keybinding and launches the existing v0.3 transmitter. Q now reaches the game AND the Nothing to Say receiver through the bridge (a simple two-way split).
+3. In the game: hold Q to unmute, release Q to mute. We verified this by speaking on a Discord channel and observing its speaking indicator.
+4. Pressing Ctrl+C in the launch terminal stops the transmitter and invokes restoration of the saved global Q shortcut. Restoration worked in our tests.
+
+Once installed on the tested setup, start with:
+  bash ~/Downloads/Q-Bridge-v0.5-AutoSwitch/run.sh
+Stop with Ctrl+C in that terminal.
+
+TESTED ENVIRONMENT
+- Ubuntu 26.04, GNOME/Wayland; locally installed Nothing to Say v31;
+- Dell USB physical keyboard, exposed as /dev/input/event2 ON THIS MACHINE (device path varies);
+- Brave -> GeForce NOW -> World of Tanks, fullscreen;
+- Discord voice chat, including a separate check of Discord's own mute control.
+TeamSpeak is another potential client of the same system-wide mic mute, but we did not perform an equivalent full GeForce NOW + TeamSpeak test. Other browsers, games, cloud-gaming services, or hardware configurations were not validated. Compatibility and behavior may vary, including depending on browser support and input capture.
+
+LIMITATIONS AND SECURITY
+- Reading /dev/input generally needs elevated permissions. A keyboard device exposes other keys too: run only code you trust; never publish raw keyboard logs or passwords. Our transmitter processes Q events only, but its input-device access is broader.
+- The receiver patches the installed Nothing to Say extension.js. Back up the original first. On GNOME/Wayland, logging out and back in may be needed to reload the extension; future extension updates can overwrite the patch.
+- The global binding is changed through GNOME settings. Forced process termination, crashes, or power loss may prevent the Ctrl+C cleanup routine from restoring it; check keybinding-toggle-mute if needed.
+- While the bridge is active, holding Q can ALSO type qqqq in a focused text field (e.g. an in-game chat). That is the known compromise of the split mode.
+- System-level mute should not be treated as a universal guarantee of microphone privacy; verify each application's own mute status.
+- Experimental installers and code should be reviewed before public redistribution. Never run untrusted downloaded scripts as administrator.
+
+CREDITS
+Nothing to Say: original GNOME extension by Wouter Bolsterlee, https://github.com/wbolster/nothing-to-say (GPL-2.0; see upstream license).
+Q Bridge: separate experimental local helper co-developed through iterative testing by an Ubuntu user 0Cool and ChatGPT (OpenAI), combining user requirements, hands-on testing, and generated scripts. It is not affiliated with the Nothing to Say author, NVIDIA, or Discord.
+
+Document version: October 15, 2026 / Tested configuration only.

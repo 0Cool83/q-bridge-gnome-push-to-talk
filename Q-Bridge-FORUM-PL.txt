@@ -1,0 +1,57 @@
+TYTUŁ: [Ubuntu / GNOME / Wayland] Push-to-Talk w Discordzie poza jego oknem + GeForce NOW w Brave — Nothing to Say i Q Bridge (przetestowane rozwiązanie)
+
+WSTĘP
+Opisuję dwa powiązane problemy, które udało się rozwiązać na jednym komputerze z Ubuntu 26.04, GNOME/Wayland. Rozwiązanie zostało przetestowane praktycznie podczas gry w World of Tanks przez GeForce NOW otwierane w przeglądarce Brave, z równoległą rozmową na Discordzie. Nie jest to oficjalne rozwiązanie NVIDIA, Discorda ani GNOME; na innych komputerach może działać inaczej.
+
+CZĘŚĆ I — Push-to-Talk w innych oknach: Nothing to Say
+
+Problem: w tej konfiguracji funkcja Push-to-Talk ustawiona wewnątrz Discorda nie działała niezawodnie po przejściu do innych okien. Podobny problem z wygodnym sterowaniem rozmową może dotyczyć innych komunikatorów, np. TeamSpeaka. Nie jest to twierdzenie, że Discord czy TeamSpeak zawsze mają taki błąd — opisujemy konkretną konfigurację i obserwacje.
+
+Rozwiązanie: rozszerzenie GNOME Shell „Nothing to Say”, którego autorem jest Wouter Bolsterlee (wbolster):
+https://extensions.gnome.org/extension/1113/nothing-to-say/
+https://github.com/wbolster/nothing-to-say
+
+Rozszerzenie pozwala kontrolować wyciszenie mikrofonu w systemie, niezależnie od tego, czy okno komunikatora jest na wierzchu. W ustawieniach wybraliśmy „push-to-talk” i skrót Q. Przytrzymanie Q odblokowuje mikrofon, puszczenie Q wycisza go. Stan można także kontrolować ikoną rozszerzenia. Własna kontrola wyciszania Discorda pozostaje niezależna: gdy mikrofon jest wyciszony w Discordzie, systemowy Push-to-Talk nie zastępuje tego ustawienia.
+
+Istotne ograniczenie: pojedynczy klawisz Q przypisany jako globalny skrót GNOME jest przechwytywany przez rozszerzenie, więc w tym trybie nie można normalnie wpisywać Q w polach tekstowych. To cecha przyjętej konfiguracji skrótu, nie błąd Q Bridge. Jeśli pisanie Q jest niezbędne, trzeba rozważyć inny skrót lub świadomie przełączyć tryb pracy.
+
+CZĘŚĆ II — GeForce NOW przechwytuje klawiaturę: Q Bridge
+
+Drugi problem pojawił się przy uruchomieniu World of Tanks przez GeForce NOW w Brave w trybie pełnoekranowym: sesja gry przejmowała klawiaturę i mysz, a globalne Q w Nothing to Say nie reagowało jak poza grą. Samo rozszerzenie nie wystarczyło.
+
+Powstał eksperymentalny dodatek „Q Bridge”. Nie zastępuje on Nothing to Say ani sterowania dźwiękiem. Czyta zdarzenia naciśnięcia/zwolnienia Q z fizycznej klawiatury przez Linux evdev (testowane z evtest, kod KEY_Q = 16) i przesyła PRESS/RELEASE do niewielkiego odbiornika D-Bus dodanego do lokalnego kodu Nothing to Say. Odbiornik uruchamia tę samą logikę Push-to-Talk, z której rozszerzenie już korzysta.
+
+Schemat:
+  Klawiatura Q --> gra/przeglądarka (normalne wejście)
+              \-> Q Bridge (evdev) -> D-Bus -> odbiornik w Nothing to Say -> systemowe wyciszenie mikrofonu -> Discord/TeamSpeak
+
+Wersja testowa v0.5 Auto Switch działa tak:
+1. Przed grą: Nothing to Say używa globalnego skrótu Q jak zwykle.
+2. Uruchomienie „run.sh” tymczasowo wyłącza globalną rejestrację Q, po czym uruchamia istniejący nadajnik (v0.3). Dzięki temu Q dociera do gry i dodatkowo do Nothing to Say przez most („trójnik”).
+3. Podczas gry: Q wciśnięte = odblokowany mikrofon; Q puszczone = wyciszony mikrofon. Test z rzeczywistą rozmową na kanale Discorda zakończył się powodzeniem.
+4. Ctrl+C w terminalu zatrzymuje nadajnik i wykonuje procedurę przywrócenia zapisanego globalnego skrótu Q. W naszym teście powrót działał.
+
+Uruchomienie w testowanej konfiguracji (zakładając, że kod i poprawka są już zainstalowane):
+  bash ~/Downloads/Q-Bridge-v0.5-AutoSwitch/run.sh
+Aby zakończyć: Ctrl+C w tym samym terminalu.
+
+Środowisko testowe:
+- Ubuntu 26.04, GNOME/Wayland; Nothing to Say v31 (lokalnie zainstalowana wersja);
+- fizyczna klawiatura USB Dell, urządzenie odczytywane jako /dev/input/event2 NA TYM KOMPUTERZE (numer urządzenia może być inny);
+- Brave -> GeForce NOW -> World of Tanks, fullscreen;
+- Discord do komunikacji głosowej; niezależne wyciszenie w Discordzie również sprawdzone.
+TeamSpeak to potencjalny drugi komunikator korzystający z systemowego mikrofonu; nie przedstawiamy osobnego pełnego testu tej samej kombinacji z GeForce NOW i TeamSpeakiem. Nie testowaliśmy innych przeglądarek ani wszystkich usług cloud gaming. Inne gry lub platformy mogą działać, ale wymagają osobnych prób.
+
+OGRANICZENIA I BEZPIECZEŃSTWO
+- Czytanie /dev/input zwykle wymaga podwyższonych uprawnień. Urządzenie klawiatury udostępnia także zdarzenia innych klawiszy: używaj tylko kodu, któremu ufasz; nie publikuj surowych logów wpisywanych klawiszy ani haseł. Nasz nadajnik przetwarza tylko Q, lecz dostęp do urządzenia jest szerszy.
+- Poprawka odbiornika modyfikuje lokalny plik extension.js Nothing to Say. Zrób kopię oryginału, zanim użyjesz skryptu; po zmianach w GNOME/Wayland może być potrzebne wylogowanie i zalogowanie. Aktualizacja rozszerzenia może zastąpić poprawkę.
+- Skrót Q jest przełączany przez ustawienia GNOME. Awaryjne zabicie procesu, awaria systemu lub utrata zasilania mogą ominąć procedurę przywracania. W takim przypadku sprawdź ustawienie keybinding-toggle-mute.
+- W trakcie działania mostu Q może również wpisywać się w aktywnym polu tekstowym (np. czacie gry lub przeglądarce). To przewidziany kompromis trybu „trójnik”.
+- Nie jest to izolacja prywatności gwarantowana dla każdego mikrofonu/aplikacji; przed rozmową kontroluj wskaźnik i stan wyciszenia.
+- Pierwotne pakiety testowe i instrukcje powinny zostać poddane przeglądowi kodu przed publicznym rozpowszechnianiem. Nie instaluj przypadkowych skryptów z uprawnieniami administratora.
+
+AUTORSTWO I PODZIĘKOWANIA
+Nothing to Say: oryginalne rozszerzenie Woutera Bolsterlee, https://github.com/wbolster/nothing-to-say (GPL-2.0; zobacz licencję oryginału).
+Q Bridge: niezależny, eksperymentalny lokalny dodatek opracowany wspólnie w toku testów przez użytkownika Ubuntu 0Cool i ChatGPT (OpenAI): pomysł, obserwacje, testy praktyczne i opracowanie skryptów. Nie jest to projekt oficjalnie powiązany z autorem Nothing to Say ani z NVIDIA lub Discordem.
+
+Wersja opisu: 15 października 2026 r. / Test environment only.
